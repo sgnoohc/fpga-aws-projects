@@ -25,6 +25,14 @@ And you are telling Xilinx Vivado to create these output products (i.e. source c
 
 Now it is time to overwrite some of the skeleton files of the projects with what is in [src/](src/)
 If everything went well, then only a few lines in my_matrix_multiplier.v should be different betwen the two files.
-Copy that file over
 
+    my_matrix_multiplier.v
+    my_matrix_multiplier_implementation.v
+
+Copy those files over
+
+    # For example
     cp ~/src/project_data/fpga-aws-projects/matrix_multiplier_rtl/vivado/src/my_matrix_multiplier.v ~/src/project_data/workspace/<SDAccel_Project_Name>/vivado_rtl_kernel/my_matrix_multiplier_ex/imports/my_matrix_multiplier.v
+
+    # For example
+    cp my_matrix_multiplier_implementation.sv ~/src/project_data/workspace/matrix_multiplier/vivado_rtl_kernel/my_matrix_multiplier_ex/imports/
