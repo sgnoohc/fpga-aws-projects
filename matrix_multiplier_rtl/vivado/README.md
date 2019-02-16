@@ -36,3 +36,14 @@ Copy those files over
 
     # For example
     cp my_matrix_multiplier_implementation.sv ~/src/project_data/workspace/matrix_multiplier/vivado_rtl_kernel/my_matrix_multiplier_ex/imports/
+
+The second file must be added to the Vivado xilinx project since the project doesn't know about the file.
+If you already copied over the files to ```imports/``` directory, then don't select the "Copy files to project" option.
+Since it's easier to place the source files that you are going to edit in one place.
+
+### Running behavioral simulation
+
+Now let's run behavioral simulation to see if things compile OK.
+From the left-hand side panel, click on the "Run Simulation" and "Run Behavioral Simulation".
+If you get a XSim output with waveform, then success!
+
