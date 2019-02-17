@@ -2,8 +2,8 @@
 ################################################################################
 
 set kernel_name    "my_matrix_multiplier"
-set kernel_vendor  "UCSD_CMS_HEP"
-set kernel_library "Kernel"
+set kernel_vendor  "UCSD_HEP_CMS"
+set kernel_library "kernel"
 
 ##############################################################################
 

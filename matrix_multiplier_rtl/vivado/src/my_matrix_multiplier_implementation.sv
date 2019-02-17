@@ -314,7 +314,7 @@ genvar ith_word_in_A;
 generate
     for (ith_word_in_A = 0; ith_word_in_A < MATRIX_DEPTH; ith_word_in_A++) begin: parse_words_in_A
         axis_data_fifo_32bit inst_fifo_in_A_word (
-          .s_axis_aresetn     ( areset                                 ) , // input wire s_axis_aresetn
+          .s_axis_aresetn     ( ap_rst_n                               ) , // input wire s_axis_aresetn
           .s_axis_aclk        ( ap_clk                                 ) , // input wire s_axis_aclk
           .s_axis_tvalid      ( s_fifo_in_A_word_tvalid[ith_word_in_A] ) , // input wire s_axis_tvalid
           .s_axis_tready      ( s_fifo_in_A_word_tready[ith_word_in_A] ) , // output wire s_axis_tready
@@ -356,7 +356,7 @@ genvar ith_word_in_B;
 generate
     for (ith_word_in_B = 0; ith_word_in_B < MATRIX_WIDTH; ith_word_in_B++) begin: parse_words_in_B
         axis_data_fifo_32bit inst_fifo_in_B_word (
-          .s_axis_aresetn     ( areset                                 ) , // input wire s_axis_aresetn
+          .s_axis_aresetn     ( ap_rst_n                               ) , // input wire s_axis_aresetn
           .s_axis_aclk        ( ap_clk                                 ) , // input wire s_axis_aclk
           .s_axis_tvalid      ( s_fifo_in_B_word_tvalid[ith_word_in_B] ) , // input wire s_axis_tvalid
           .s_axis_tready      ( s_fifo_in_B_word_tready[ith_word_in_B] ) , // output wire s_axis_tready
@@ -442,11 +442,11 @@ endgenerate
 
 // axis_interconnect_0 inst_axis_interconnect_in_A_plus_in_B (
 //   .ACLK                     ( ap_clk                   ) , // input wire aclk
-//   .ARESETN                  ( areset                   ) , // input wire aresetn
+//   .ARESETN                  ( ap_rst_n                 ) , // input wire aresetn
 //   .S00_AXIS_ACLK            ( ap_clk                   ) , // input wire s00_axis_aclk
 //   .S01_AXIS_ACLK            ( ap_clk                   ) , // input wire s01_axis_aclk
-//   .S00_AXIS_ARESETN         ( areset                   ) , // input wire s00_axis_aresetn
-//   .S01_AXIS_ARESETN         ( areset                   ) , // input wire s01_axis_aresetn
+//   .S00_AXIS_ARESETN         ( ap_rst_n                 ) , // input wire s00_axis_aresetn
+//   .S01_AXIS_ARESETN         ( ap_rst_n                 ) , // input wire s01_axis_aresetn
 //   .S00_AXIS_TVALID          ( rd_tvalid_in_A           ) , // input wire s00_axis_tvalid
 //   .S01_AXIS_TVALID          ( rd_tvalid_in_B           ) , // input wire s01_axis_tvalid
 //   .S00_AXIS_TREADY          ( rd_tready_in_A           ) , // output wire s00_axis_tready
@@ -456,7 +456,7 @@ endgenerate
 //   .S00_AXIS_TLAST           ( rd_tlast_in_A            ) , // input wire s00_axis_tlast
 //   .S01_AXIS_TLAST           ( rd_tlast_in_B            ) , // input wire s01_axis_tlast
 //   .M00_AXIS_ACLK            ( ap_clk                   ) , // input wire m00_axis_aclk
-//   .M00_AXIS_ARESETN         ( areset                   ) , // input wire m00_axis_aresetn
+//   .M00_AXIS_ARESETN         ( ap_rst_n                 ) , // input wire m00_axis_aresetn
 //   .M00_AXIS_TVALID          ( wr_tvalid_out_C          ) , // output wire m00_axis_tvalid
 //   .M00_AXIS_TREADY          ( wr_tready_out_C          ) , // input wire m00_axis_tready
 //   .M00_AXIS_TDATA           ( wr_tdata_out_C           ) , // output wire [511 : 0] m00_axis_tdata

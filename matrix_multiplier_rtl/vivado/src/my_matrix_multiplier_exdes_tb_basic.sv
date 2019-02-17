@@ -10,7 +10,8 @@ import slv_m02_axi_vip_pkg::*;
 import control_my_matrix_multiplier_vip_pkg::*;
 
 module my_matrix_multiplier_exdes_tb_basic ();
-parameter integer LP_MAX_LENGTH = 8192;
+// parameter integer LP_MAX_LENGTH = 8192;
+parameter integer LP_MAX_LENGTH = 5;
 parameter integer LP_MAX_TRANSFER_LENGTH = 16384 / 4;
 parameter KRNL_CTRL_REG_ADDR = 32'h00000000;
 parameter KRNL_GIE_REG_ADDR  = 32'h00000004;
@@ -893,9 +894,174 @@ task automatic multiple_iteration(input integer unsigned num_iterations, output 
   end
 endtask
 
+///////////////////////////////////////////////////////////////////////////////////////////////////
+////Instantiate AXI4 LITE VIP
+//initial begin : STIMULUS
+//  start_vips();
+//  check_scalar_registers(error_found);
+//  if (error_found == 1) begin
+//    $display( "Test Failed!");
+//    $finish();
+//  end
+//  check_pointer_registers(error_found);
+//  if (error_found == 1) begin
+//    $display( "Test Failed!");
+//    $finish();
+//  end
+//  enable_interrupts();
+//  multiple_iteration(1, error_found);
+//  if (error_found == 1) begin
+//    $display( "Test Failed!");
+//    $finish();
+//  end
+//  multiple_iteration(5, error_found);
+
+//  if (error_found == 1) begin
+//    $display( "Test Failed!");
+//    $finish();
+//  end else begin
+//    $display( "Test completed successfully");
+//  end
+//  $finish;
+//end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /////////////////////////////////////////////////////////////////////////////////////////////////
-//Instantiate AXI4 LITE VIP
-initial begin : STIMULUS
+/////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+// Backdoor fill the m00_axi memory.
+function void m00_axi_fill_memory_MYTEST(
+  input bit [63:0] ptr,
+  input integer    length
+);
+  for (longint unsigned slot = 0; slot < length; slot++) begin
+    m00_axi.mem_model.backdoor_memory_write_4byte(ptr + (slot * 4), 1);
+  end
+endfunction
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+// Backdoor fill the m01_axi memory.
+function void m01_axi_fill_memory_MYTEST(
+  input bit [63:0] ptr,
+  input integer    length
+);
+  for (longint unsigned slot = 0; slot < length; slot++) begin
+    m01_axi.mem_model.backdoor_memory_write_4byte(ptr + (slot * 4), 1);
+  end
+endfunction
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+// Backdoor fill the m02_axi memory.
+function void m02_axi_fill_memory_MYTEST(
+  input bit [63:0] ptr,
+  input integer    length
+);
+  for (longint unsigned slot = 0; slot < length; slot++) begin
+    m02_axi.mem_model.backdoor_memory_write_4byte(ptr + (slot * 4), 1);
+  end
+endfunction
+
+
+task automatic backdoor_fill_memories_MYTEST();
+
+  /////////////////////////////////////////////////////////////////////////////////////////////////
+  // Backdoor fill the memory with the content.
+  m00_axi_fill_memory_MYTEST(in_A_ptr, LP_MAX_LENGTH);
+
+  /////////////////////////////////////////////////////////////////////////////////////////////////
+  // Backdoor fill the memory with the content.
+  m01_axi_fill_memory_MYTEST(in_B_ptr, LP_MAX_LENGTH);
+
+  /////////////////////////////////////////////////////////////////////////////////////////////////
+  // Backdoor fill the memory with the content.
+  m02_axi_fill_memory_MYTEST(out_C_ptr, LP_MAX_LENGTH);
+
+endtask
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+// Set up the kernel for operation and set the kernel START bit.
+// The task will poll the DONE bit and check the results when complete.
+task automatic multiple_iteration_MYTEST(input integer unsigned num_iterations, output bit error_found);
+  error_found = 0;
+
+  $display("Starting: multiple_iteration");
+  for (integer unsigned iter = 0; iter < num_iterations; iter++) begin
+    $display("Starting iteration: %d / %d", iter+1, num_iterations);
+    RAND_WREADY_PRESSURE_FAILED: assert(std::randomize(choose_pressure_type));
+    case(choose_pressure_type)
+      0: slv_no_backpressure_wready();
+      1: slv_random_backpressure_wready();
+    endcase
+    RAND_RVALID_PRESSURE_FAILED: assert(std::randomize(choose_pressure_type));
+    case(choose_pressure_type)
+      0: slv_no_delay_rvalid();
+      1: slv_random_delay_rvalid();
+    endcase
+    set_scalar_registers();
+    set_memory_pointers();
+    backdoor_fill_memories_MYTEST();
+    // Check that Kernel is IDLE before starting.
+    poll_idle_register();
+    ///////////////////////////////////////////////////////////////////////////
+    //Start transfers
+    write_register(KRNL_CTRL_REG_ADDR, CONTROL_START_MASK);
+    ctrl.wait_drivers_idle();
+    ///////////////////////////////////////////////////////////////////////////
+    //Wait for interrupt being asserted or poll done register
+    @(posedge interrupt);
+    ///////////////////////////////////////////////////////////////////////////
+    // Service the interrupt
+    service_interrupts();
+    wait(interrupt == 0);
+    ///////////////////////////////////////////////////////////////////////////
+    error_found |= check_kernel_result()   ;
+    $display("Finished iteration: %d / %d", iter+1, num_iterations);
+  end
+endtask
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+// Custom stimulus
+initial begin : CUSTOMSTIMULUS
   start_vips();
   check_scalar_registers(error_found);
   if (error_found == 1) begin
@@ -907,13 +1073,22 @@ initial begin : STIMULUS
     $display( "Test Failed!");
     $finish();
   end
+  $display( "HERE DO I COME HERE????");
+  $display( "HERE DO I COME HERE????");
+  $display( "HERE DO I COME HERE????");
+  $display( "HERE DO I COME HERE????");
+  $display( "HERE DO I COME HERE????");
+  $display( "HERE DO I COME HERE????");
   enable_interrupts();
-  multiple_iteration(1, error_found);
+  multiple_iteration_MYTEST(1, error_found);
+  $display( "Done with single iteration");
   if (error_found == 1) begin
     $display( "Test Failed!");
     $finish();
   end
-  multiple_iteration(5, error_found);
+  $display( "Starting 5 iterations");
+  multiple_iteration_MYTEST(5, error_found);
+  $display( "Done with 5 itertions");
 
   if (error_found == 1) begin
     $display( "Test Failed!");
