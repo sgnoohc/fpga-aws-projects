@@ -974,9 +974,13 @@ function void m00_axi_fill_memory_MYTEST(
   input bit [63:0] ptr,
   input integer    length
 );
-  file_inputs_in_A = $fopen("", "r"); //Opening text file
+  integer file_inputs_in_A;
+  integer scan_inputs_in_A;
+  logic [32-1:0] input_value;
+  file_inputs_in_A = $fopen("../../../../imports/tb_data/tb_input_A_features_hex.dat", "r"); //Opening text file
   for (longint unsigned slot = 0; slot < length; slot++) begin
-    m00_axi.mem_model.backdoor_memory_write_4byte(ptr + (slot * 4), 32'he0df0000 + slot);
+    scan_inputs_in_A = $fscanf(file_inputs_in_A, "%h", input_value);
+    m00_axi.mem_model.backdoor_memory_write_4byte(ptr + (slot * 4), input_value);
   end
 endfunction
 
@@ -986,8 +990,13 @@ function void m01_axi_fill_memory_MYTEST(
   input bit [63:0] ptr,
   input integer    length
 );
+  integer file_inputs_in_B;
+  integer scan_inputs_in_B;
+  logic [32-1:0] input_value;
+  file_inputs_in_B = $fopen("../../../../imports/tb_data/tb_input_B_features_hex.dat", "r"); //Opening text file
   for (longint unsigned slot = 0; slot < length; slot++) begin
-    m01_axi.mem_model.backdoor_memory_write_4byte(ptr + (slot * 4), 65536 + slot);
+    scan_inputs_in_B = $fscanf(file_inputs_in_B, "%h", input_value);
+    m01_axi.mem_model.backdoor_memory_write_4byte(ptr + (slot * 4), input_value);
   end
 endfunction
 
