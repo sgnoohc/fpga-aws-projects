@@ -100,6 +100,7 @@ localparam integer  LP_DEFAULT_LENGTH_IN_BYTES = 16384;
 localparam integer  LP_NUM_EXAMPLES    = 3;
 localparam integer  MATRIX_WIDTH = 16;
 localparam integer  MATRIX_DEPTH = 16;
+localparam integer  MATRIX_ITER = 16;
 
 ///////////////////////////////////////////////////////////////////////////////
 // Wires and Variables
@@ -292,6 +293,41 @@ inst_axi_read_master_out_C (
   .s_axis_tdata            ( wr_tdata_out_C          )
 );
 
+//========================================================================================
+// FSM for counting number of inputs pushed into FIFO so I can toggle TLAST the way I want
+//========================================================================================
+
+logic [MATRIX_ITER-1:0] in_A_word_counter = 16'h0000;
+logic                   in_A_word_tlast;
+always @(posedge ap_clk) begin
+    if (rd_tvalid_in_A && rd_tready_in_A && in_A_word_counter == 16'h0000) begin
+        in_A_word_counter <= 16'h0001;
+    end
+    else if (rd_tvalid_in_A && rd_tready_in_A && in_A_word_counter == 16'h8000) begin
+        in_A_word_counter <= 16'h0001;
+    end
+    else if (rd_tvalid_in_A && rd_tready_in_A && in_A_word_counter != 16'h0000) begin
+        in_A_word_counter <= in_A_word_counter << 1;
+    end
+end
+assign in_A_word_tlast = in_A_word_counter[MATRIX_ITER-1];
+
+logic [MATRIX_ITER-1:0] in_B_word_counter = 16'h0000;
+logic                   in_B_word_tlast;
+always @(posedge ap_clk) begin
+    if (rd_tvalid_in_B && rd_tready_in_B && in_B_word_counter == 16'h0000) begin
+        in_B_word_counter <= 16'h0001;
+    end
+    else if (rd_tvalid_in_B && rd_tready_in_B && in_B_word_counter == 16'h8000) begin
+        in_B_word_counter <= 16'h0001;
+    end
+    else if (rd_tvalid_in_B && rd_tready_in_B && in_B_word_counter != 16'h0000) begin
+        in_B_word_counter <= in_B_word_counter << 1;
+    end
+end
+assign in_B_word_tlast = in_B_word_counter[MATRIX_ITER-1];
+
+
 //=================================================================================
 //
 //
@@ -321,8 +357,7 @@ generate
           .s_axis_tdata       ( s_fifo_in_A_word_tdata[ith_word_in_A]  ) , // input wire [31 : 0] s_axis_tdata
           .s_axis_tlast       ( s_fifo_in_A_word_tlast[ith_word_in_A]  ) , // input wire s_axis_tlast
           .m_axis_tvalid      ( m_fifo_in_A_word_tvalid[ith_word_in_A] ) , // output wire m_axis_tvalid
-          .m_axis_tready      ( 1'b1                                   ) , // input wire m_axis_tready
-          // .m_axis_tready      ( m_fifo_in_A_word_tready[ith_word_in_A] ) , // input wire m_axis_tready
+          .m_axis_tready      ( m_fifo_in_A_word_tready[ith_word_in_A] ) , // input wire m_axis_tready
           .m_axis_tdata       ( m_fifo_in_A_word_tdata[ith_word_in_A]  ) , // output wire [31 : 0] m_axis_tdata
           .m_axis_tlast       ( m_fifo_in_A_word_tlast[ith_word_in_A]  ) , // output wire m_axis_tlast
           .axis_data_count    (                                        ) , // output wire [31 : 0] axis_data_count
@@ -334,7 +369,8 @@ endgenerate
 
 // Wire the in_A read module to individual fifos
 assign s_fifo_in_A_word_tvalid = {MATRIX_DEPTH{rd_tvalid_in_A}};
-assign s_fifo_in_A_word_tlast  = {MATRIX_DEPTH{rd_tlast_in_A}};
+// assign s_fifo_in_A_word_tlast  = {MATRIX_DEPTH{rd_tlast_in_A}};
+assign s_fifo_in_A_word_tlast  = {MATRIX_DEPTH{in_A_word_tlast}};
 assign rd_tready_in_A = &s_fifo_in_A_word_tready;
 genvar i_in_A_to_s_fifo;
 generate
@@ -363,8 +399,7 @@ generate
           .s_axis_tdata       ( s_fifo_in_B_word_tdata[ith_word_in_B]  ) , // input wire [31 : 0] s_axis_tdata
           .s_axis_tlast       ( s_fifo_in_B_word_tlast[ith_word_in_B]  ) , // input wire s_axis_tlast
           .m_axis_tvalid      ( m_fifo_in_B_word_tvalid[ith_word_in_B] ) , // output wire m_axis_tvalid
-          .m_axis_tready      ( 1'b1                                   ) , // input wire m_axis_tready
-          // .m_axis_tready      ( m_fifo_in_B_word_tready[ith_word_in_B] ) , // input wire m_axis_tready
+          .m_axis_tready      ( m_fifo_in_B_word_tready[ith_word_in_B] ) , // input wire m_axis_tready
           .m_axis_tdata       ( m_fifo_in_B_word_tdata[ith_word_in_B]  ) , // output wire [31 : 0] m_axis_tdata
           .m_axis_tlast       ( m_fifo_in_B_word_tlast[ith_word_in_B]  ) , // output wire m_axis_tlast
           .axis_data_count    (                                        ) , // output wire [31 : 0] axis_data_count
@@ -376,7 +411,8 @@ endgenerate
 
 // Wire the in_B read module to individual fifos
 assign s_fifo_in_B_word_tvalid = {MATRIX_WIDTH{rd_tvalid_in_B}};
-assign s_fifo_in_B_word_tlast  = {MATRIX_WIDTH{rd_tlast_in_B}};
+// assign s_fifo_in_B_word_tlast  = {MATRIX_WIDTH{rd_tlast_in_B}};
+assign s_fifo_in_B_word_tlast  = {MATRIX_WIDTH{in_B_word_tlast}};
 assign rd_tready_in_B = &s_fifo_in_B_word_tready;
 genvar i_in_B_to_s_fifo;
 generate
@@ -402,52 +438,78 @@ end
 //
 //=================================================================================
 
-// logic                                              mm_tready;
-// logic                                              mm_tvalid;
-// logic [MATRIX_WIDTH-1:0][MATRIX_DEPTH-1:0][32-1:0] mm_tdata;
+logic [MATRIX_DEPTH-1:0][MATRIX_WIDTH-1:0]         mm_tready;
+logic [MATRIX_DEPTH-1:0][MATRIX_WIDTH-1:0]         mm_tvalid;
+logic [MATRIX_DEPTH-1:0][MATRIX_WIDTH-1:0][32-1:0] mm_tdata;
+logic [MATRIX_DEPTH-1:0][MATRIX_WIDTH-1:0]         mm_tlast;
 
-// genvar ii;
-// genvar jj;
-// generate
-//     for (ii = 0; ii < MATRIX_DEPTH; ii++) begin: multipliers_A
-//         for (jj = 0; jj < MATRIX_DEPTH; jj++) begin: multipliers_B
+genvar ii;
+genvar jj;
+generate
+    for (ii = 0; ii < MATRIX_DEPTH; ii++) begin: multipliers_A
+        for (jj = 0; jj < MATRIX_WIDTH; jj++) begin: multipliers_B
 
-//             logic        AxB_to_accumul_tvalid;
-//             logic        AxB_to_accumul_tready;
-//             logic [31:0] AxB_to_accumul_tdata;
-//             logic        AxB_to_accumul_tlast;
+            logic        AxB_to_accumul_tvalid;
+            logic        AxB_to_accumul_tready;
+            logic [31:0] AxB_to_accumul_tdata;
+            logic        AxB_to_accumul_tlast;
+            logic        accumul_result_tready;
+            logic        accumul_result_tvalid;
+            logic        accumul_result_tvalid_and_tlast;
+            logic [31:0] accumul_result_tdata;
+            logic        accumul_result_tlast;
 
-//             floating_point_AxB multiplier (
-//               .aclk                 ( ap_clk                     ) , // input wire aclk
-//               .s_axis_a_tvalid      ( rd_tvalid_in_A             ) , // input wire s_axis_a_tvalid
-//               .s_axis_a_tready      ( rd_tready_in_A             ) , // output wire s_axis_a_tready
-//               .s_axis_a_tdata       ( rd_tdata_in_A[(ii*32)+:32] ) , // input wire [31 : 0] s_axis_a_tdata
-//               .s_axis_a_tlast       ( rd_tlast_in_A              ) , // input wire s_axis_a_tlast
-//               .s_axis_b_tvalid      ( rd_tvalid_in_B             ) , // input wire s_axis_b_tvalid
-//               .s_axis_b_tready      ( rd_tready_in_B             ) , // output wire s_axis_b_tready
-//               .s_axis_b_tdata       ( rd_tdata_in_B[(jj*32)+:32] ) , // input wire [31 : 0] s_axis_b_tdata
-//               .s_axis_b_tlast       ( rd_tlast_in_B              ) , // input wire s_axis_b_tlast
-//               .m_axis_result_tvalid ( AxB_to_accumul_tvalid      ) , // output wire m_axis_result_tvalid
-//               .m_axis_result_tready ( AxB_to_accumul_tready      ) , // input wire m_axis_result_tready
-//               .m_axis_result_tdata  ( AxB_to_accumul_tdata       ) , // output wire [31 : 0] m_axis_result_tdata
-//               .m_axis_result_tlast  ( AxB_to_accumul_tlast       )   // output wire m_axis_result_tlast
-//             );
+            assign accumul_result_tvalid_and_tlast = accumul_result_tvalid && accumul_result_tlast;
 
-//             floating_point_accumulator accumulator (
-//               .aclk                 ( ap_clk               ) , // input wire aclk
-//               .s_axis_a_tvalid      ( AxB_to_accumul_tvalid) , // input wire s_axis_a_tvalid
-//               .s_axis_a_tready      ( AxB_to_accumul_tready) , // output wire s_axis_a_tready
-//               .s_axis_a_tdata       ( AxB_to_accumul_tdata ) , // input wire [31 : 0] s_axis_a_tdata
-//               .s_axis_a_tlast       ( AxB_to_accumul_tlast ) , // input wire s_axis_a_tlast
-//               .m_axis_result_tvalid ( mm_tvalid            ) , // output wire m_axis_result_tvalid
-//               .m_axis_result_tready ( mm_tready            ) , // input wire m_axis_result_tready
-//               .m_axis_result_tdata  ( mm_tdata[ii][jj]     ) , // output wire [31 : 0] m_axis_result_tdata
-//               .m_axis_result_tlast  (                      )   // output wire m_axis_result_tlast
-//             );
+            floating_point_AxB multiplier (
+              .aclk                 ( ap_clk                                ) , // input wire aclk
+              .s_axis_a_tvalid      ( m_fifo_in_A_word_tvalid[ii]           ) , // input wire s_axis_a_tvalid
+              .s_axis_a_tready      ( m_fifo_in_A_word_tready[ii]           ) , // output wire s_axis_a_tready
+              .s_axis_a_tdata       ( m_fifo_in_A_word_tdata[ii]            ) , // input wire [31 : 0] s_axis_a_tdata
+              .s_axis_a_tlast       ( m_fifo_in_A_word_tlast[ii]            ) , // input wire s_axis_a_tlast
+              .s_axis_b_tvalid      ( m_fifo_in_B_word_tvalid[jj]           ) , // input wire s_axis_b_tvalid
+              .s_axis_b_tready      ( m_fifo_in_B_word_tready[jj]           ) , // output wire s_axis_b_tready
+              .s_axis_b_tdata       ( m_fifo_in_B_word_tdata[jj]            ) , // input wire [31 : 0] s_axis_b_tdata
+              .s_axis_b_tlast       ( m_fifo_in_B_word_tlast[jj]            ) , // input wire s_axis_b_tlast
+              .m_axis_result_tvalid ( AxB_to_accumul_tvalid                 ) , // output wire m_axis_result_tvalid
+              .m_axis_result_tready ( AxB_to_accumul_tready                 ) , // input wire m_axis_result_tready
+              .m_axis_result_tdata  ( AxB_to_accumul_tdata                  ) , // output wire [31 : 0] m_axis_result_tdata
+              .m_axis_result_tlast  ( AxB_to_accumul_tlast                  )   // output wire m_axis_result_tlast
+            );
 
-//         end
-//     end
-// endgenerate
+            floating_point_accumulator accumulator (
+              .aclk                 ( ap_clk               ) , // input wire aclk
+              .s_axis_a_tvalid      ( AxB_to_accumul_tvalid) , // input wire s_axis_a_tvalid
+              .s_axis_a_tready      ( AxB_to_accumul_tready) , // output wire s_axis_a_tready
+              .s_axis_a_tdata       ( AxB_to_accumul_tdata ) , // input wire [31 : 0] s_axis_a_tdata
+              .s_axis_a_tlast       ( AxB_to_accumul_tlast ) , // input wire s_axis_a_tlast
+              .m_axis_result_tvalid ( accumul_result_tvalid) , // output wire m_axis_result_tvalid
+              .m_axis_result_tready ( accumul_result_tready) , // input wire m_axis_result_tready
+              .m_axis_result_tdata  ( accumul_result_tdata ) , // output wire [31 : 0] m_axis_result_tdata
+              .m_axis_result_tlast  ( accumul_result_tlast )   // output wire m_axis_result_tlast
+            );
+
+            axis_data_fifo_32bit result_fifo (
+              .s_axis_aresetn     ( ap_rst_n                               ) , // input wire s_axis_aresetn
+              .s_axis_aclk        ( ap_clk                                 ) , // input wire s_axis_aclk
+              .s_axis_tvalid      ( accumul_result_tvalid_and_tlast        ) , // input wire s_axis_tvalid
+              .s_axis_tready      ( accumul_result_tready                  ) , // output wire s_axis_tready
+              .s_axis_tdata       ( accumul_result_tdata                   ) , // input wire [31 : 0] s_axis_tdata
+              .s_axis_tlast       ( accumul_result_tlast                   ) , // input wire s_axis_tlast
+              .m_axis_tvalid      ( mm_tvalid[ii][jj]                      ) , // output wire m_axis_tvalid
+              .m_axis_tready      ( mm_tready[ii][jj]                      ) , // input wire m_axis_tready
+              .m_axis_tdata       ( mm_tdata[ii][jj]                       ) , // output wire [31 : 0] m_axis_tdata
+              .m_axis_tlast       ( mm_tlast[ii][jj]                       ) , // output wire m_axis_tlast
+              .axis_data_count    (                                        ) , // output wire [31 : 0] axis_data_count
+              .axis_wr_data_count (                                        ) , // output wire [31 : 0] axis_wr_data_count
+              .axis_rd_data_count (                                        )   // output wire [31 : 0] axis_rd_data_count
+            );
+
+        end
+    end
+endgenerate
+
+assign mm_tready = {MATRIX_DEPTH{MATRIX_WIDTH{1'b1}}};
 
 
 // axis_interconnect_0 inst_axis_interconnect_in_A_plus_in_B (
