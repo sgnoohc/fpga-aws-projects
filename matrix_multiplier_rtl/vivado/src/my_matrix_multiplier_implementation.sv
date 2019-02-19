@@ -384,6 +384,16 @@ generate
         assign s_fifo_in_B_word_tdata[i_in_B_to_s_fifo] = rd_tdata_in_B[i_in_B_to_s_fifo*32+:32];
 endgenerate
 
+always @(posedge ap_clk) begin
+    if (m_fifo_in_A_word_tlast[0] == 1'b1) begin
+        ap_done_i = 3'b111;
+    end
+    else begin
+        ap_done_i = 3'b000;
+    end
+end
+
+
 //=================================================================================
 //
 //

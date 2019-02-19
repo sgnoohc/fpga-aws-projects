@@ -10,8 +10,8 @@ import slv_m02_axi_vip_pkg::*;
 import control_my_matrix_multiplier_vip_pkg::*;
 
 module my_matrix_multiplier_exdes_tb_basic ();
-// parameter integer LP_MAX_LENGTH = 8192;
-parameter integer LP_MAX_LENGTH = 5;
+parameter integer LP_MAX_LENGTH = 8192;
+// parameter integer LP_MAX_LENGTH = 5;
 parameter integer LP_MAX_TRANSFER_LENGTH = 16384 / 4;
 parameter KRNL_CTRL_REG_ADDR = 32'h00000000;
 parameter KRNL_GIE_REG_ADDR  = 32'h00000004;
@@ -974,8 +974,9 @@ function void m00_axi_fill_memory_MYTEST(
   input bit [63:0] ptr,
   input integer    length
 );
+  file_inputs_in_A = $fopen("", "r"); //Opening text file
   for (longint unsigned slot = 0; slot < length; slot++) begin
-    m00_axi.mem_model.backdoor_memory_write_4byte(ptr + (slot * 4), 1);
+    m00_axi.mem_model.backdoor_memory_write_4byte(ptr + (slot * 4), 32'he0df0000 + slot);
   end
 endfunction
 
@@ -986,7 +987,7 @@ function void m01_axi_fill_memory_MYTEST(
   input integer    length
 );
   for (longint unsigned slot = 0; slot < length; slot++) begin
-    m01_axi.mem_model.backdoor_memory_write_4byte(ptr + (slot * 4), 1);
+    m01_axi.mem_model.backdoor_memory_write_4byte(ptr + (slot * 4), 65536 + slot);
   end
 endfunction
 
@@ -997,7 +998,7 @@ function void m02_axi_fill_memory_MYTEST(
   input integer    length
 );
   for (longint unsigned slot = 0; slot < length; slot++) begin
-    m02_axi.mem_model.backdoor_memory_write_4byte(ptr + (slot * 4), 1);
+    m02_axi.mem_model.backdoor_memory_write_4byte(ptr + (slot * 4), 65536 + slot);
   end
 endfunction
 
@@ -1060,43 +1061,77 @@ task automatic multiple_iteration_MYTEST(input integer unsigned num_iterations, 
 endtask
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
+// Set up the kernel for operation and set the kernel START bit.
+// The task will poll the DONE bit and check the results when complete.
+task automatic my_test_MYTEST(input integer unsigned num_iterations, output bit error_found);
+    error_found = 0;
+
+    slv_no_backpressure_wready();
+    slv_no_delay_rvalid();
+    set_scalar_registers();
+    set_memory_pointers();
+    backdoor_fill_memories_MYTEST();
+    // Check that Kernel is IDLE before starting.
+    poll_idle_register();
+    ///////////////////////////////////////////////////////////////////////////
+    //Start transfers
+    write_register(KRNL_CTRL_REG_ADDR, CONTROL_START_MASK);
+    ctrl.wait_drivers_idle();
+    ///////////////////////////////////////////////////////////////////////////
+    //Wait for interrupt being asserted or poll done register
+    @(posedge interrupt);
+    ///////////////////////////////////////////////////////////////////////////
+    // Service the interrupt
+    service_interrupts();
+    wait(interrupt == 0);
+    ///////////////////////////////////////////////////////////////////////////
+    error_found |= check_kernel_result()   ;
+
+endtask
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
 // Custom stimulus
 initial begin : CUSTOMSTIMULUS
   start_vips();
-  check_scalar_registers(error_found);
-  if (error_found == 1) begin
-    $display( "Test Failed!");
-    $finish();
-  end
-  check_pointer_registers(error_found);
-  if (error_found == 1) begin
-    $display( "Test Failed!");
-    $finish();
-  end
+  // check_scalar_registers(error_found);
+  // if (error_found == 1) begin
+  //   $display( "Test Failed!");
+  //   $finish();
+  // end
+  // check_pointer_registers(error_found);
+  // if (error_found == 1) begin
+  //   $display( "Test Failed!");
+  //   $finish();
+  // end
   $display( "HERE DO I COME HERE????");
   $display( "HERE DO I COME HERE????");
   $display( "HERE DO I COME HERE????");
   $display( "HERE DO I COME HERE????");
   $display( "HERE DO I COME HERE????");
   $display( "HERE DO I COME HERE????");
-  enable_interrupts();
-  multiple_iteration_MYTEST(1, error_found);
-  $display( "Done with single iteration");
-  if (error_found == 1) begin
-    $display( "Test Failed!");
-    $finish();
-  end
-  $display( "Starting 5 iterations");
-  multiple_iteration_MYTEST(5, error_found);
-  $display( "Done with 5 itertions");
 
-  if (error_found == 1) begin
-    $display( "Test Failed!");
-    $finish();
-  end else begin
-    $display( "Test completed successfully");
-  end
+  my_test_MYTEST(1, error_found);
+
   $finish;
+
+//   enable_interrupts();
+//   multiple_iteration_MYTEST(1, error_found);
+//   $display( "Done with single iteration");
+//   if (error_found == 1) begin
+//     $display( "Test Failed!");
+//     $finish();
+//   end
+//   $display( "Starting 5 iterations");
+//   multiple_iteration_MYTEST(5, error_found);
+//   $display( "Done with 5 itertions");
+
+//   if (error_found == 1) begin
+//     $display( "Test Failed!");
+//     $finish();
+//   end else begin
+//     $display( "Test completed successfully");
+//   end
+//   $finish;
 end
 
 endmodule
