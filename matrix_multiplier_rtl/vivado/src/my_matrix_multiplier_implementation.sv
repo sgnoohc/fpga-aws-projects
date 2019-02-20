@@ -509,35 +509,233 @@ generate
     end
 endgenerate
 
-assign mm_tready = {MATRIX_DEPTH{MATRIX_WIDTH{1'b1}}};
 
+//
+// Combiner
+//
 
-// axis_interconnect_0 inst_axis_interconnect_in_A_plus_in_B (
-//   .ACLK                     ( ap_clk                   ) , // input wire aclk
-//   .ARESETN                  ( ap_rst_n                 ) , // input wire aresetn
-//   .S00_AXIS_ACLK            ( ap_clk                   ) , // input wire s00_axis_aclk
-//   .S01_AXIS_ACLK            ( ap_clk                   ) , // input wire s01_axis_aclk
-//   .S00_AXIS_ARESETN         ( ap_rst_n                 ) , // input wire s00_axis_aresetn
-//   .S01_AXIS_ARESETN         ( ap_rst_n                 ) , // input wire s01_axis_aresetn
-//   .S00_AXIS_TVALID          ( rd_tvalid_in_A           ) , // input wire s00_axis_tvalid
-//   .S01_AXIS_TVALID          ( rd_tvalid_in_B           ) , // input wire s01_axis_tvalid
-//   .S00_AXIS_TREADY          ( rd_tready_in_A           ) , // output wire s00_axis_tready
-//   .S01_AXIS_TREADY          ( rd_tready_in_B           ) , // output wire s01_axis_tready
-//   .S00_AXIS_TDATA           ( rd_tdata_in_A            ) , // input wire [511 : 0] s00_axis_tdata
-//   .S01_AXIS_TDATA           ( rd_tdata_in_B            ) , // input wire [511 : 0] s01_axis_tdata
-//   .S00_AXIS_TLAST           ( rd_tlast_in_A            ) , // input wire s00_axis_tlast
-//   .S01_AXIS_TLAST           ( rd_tlast_in_B            ) , // input wire s01_axis_tlast
-//   .M00_AXIS_ACLK            ( ap_clk                   ) , // input wire m00_axis_aclk
-//   .M00_AXIS_ARESETN         ( ap_rst_n                 ) , // input wire m00_axis_aresetn
-//   .M00_AXIS_TVALID          ( wr_tvalid_out_C          ) , // output wire m00_axis_tvalid
-//   .M00_AXIS_TREADY          ( wr_tready_out_C          ) , // input wire m00_axis_tready
-//   .M00_AXIS_TDATA           ( wr_tdata_out_C           ) , // output wire [511 : 0] m00_axis_tdata
-//   .M00_AXIS_TLAST           (                          ) , // output wire m00_axis_tlast
-//   .S00_ARB_REQ_SUPPRESS     (                          ) , // input wire s00_arb_req_suppress
-//   .S01_ARB_REQ_SUPPRESS     (                          ) , // input wire s01_arb_req_suppress
-//   .M00_SPARSE_TKEEP_REMOVED (                          ) , // output wire m00_sparse_tkeep_removed
-//   .M00_FIFO_DATA_COUNT      (                          )   // output wire [31 : 0] m00_fifo_data_count
-// );
+logic [MATRIX_DEPTH-1:0]        m_axis_combiner_tvalid;
+logic [MATRIX_DEPTH-1:0]        m_axis_combiner_tready;
+logic [MATRIX_DEPTH-1:0]        m_axis_combiner_tlast;
+logic [MATRIX_DEPTH-1:0][511:0] m_axis_combiner_tdata;
+
+genvar ith_row_out_C;
+genvar ith_col_out_C;
+generate
+    for (ith_row_out_C = 0; ith_row_out_C < MATRIX_DEPTH; ith_row_out_C++) begin
+
+        logic [MATRIX_WIDTH-1:0] s_axis_combiner_tvalid;
+        logic [MATRIX_WIDTH-1:0] s_axis_combiner_tready;
+        logic [MATRIX_WIDTH-1:0] s_axis_combiner_tlast;
+        logic [MATRIX_WIDTH*32-1:0] s_axis_combiner_tdata;
+
+        for (ith_col_out_C = 0; ith_col_out_C < MATRIX_WIDTH; ith_col_out_C++) begin
+            assign s_axis_combiner_tvalid[ith_col_out_C] = mm_tvalid[ith_row_out_C][ith_col_out_C];
+            assign mm_tready[ith_row_out_C][ith_col_out_C] = s_axis_combiner_tready[ith_col_out_C];
+            assign s_axis_combiner_tlast[ith_col_out_C] = mm_tlast[ith_row_out_C][ith_col_out_C];
+            assign s_axis_combiner_tdata[(ith_col_out_C)*32+:32] = mm_tdata[ith_row_out_C][ith_col_out_C];
+        end
+
+        axis_combiner_0 combiner (
+          .aclk          ( ap_clk                                 ) , // input wire aclk
+          .aresetn       ( ap_rst_n                               ) , // input wire aresetn
+          .s_axis_tvalid ( s_axis_combiner_tvalid                 ) , // input wire [15 : 0] s_axis_tvalid
+          .s_axis_tready ( s_axis_combiner_tready                 ) , // output wire [15 : 0] s_axis_tready
+          .s_axis_tdata  ( s_axis_combiner_tdata                  ) , // input wire [511 : 0] s_axis_tdata
+          .s_axis_tlast  ( s_axis_combiner_tlast                  ) , // input wire [15 : 0] s_axis_tlast
+          .m_axis_tvalid ( m_axis_combiner_tvalid[ith_row_out_C]  ) , // output wire m_axis_tvalid
+          .m_axis_tready ( m_axis_combiner_tready[ith_row_out_C]  ) , // input wire m_axis_tready
+          .m_axis_tdata  ( m_axis_combiner_tdata[ith_row_out_C]   ) , // output wire [511 : 0] m_axis_tdata
+          .m_axis_tlast  ( m_axis_combiner_tlast[ith_row_out_C]   )   // output wire m_axis_tlast
+        );
+    end
+endgenerate
+
+// logic [MATRIX_DEPTH-1:0][MATRIX_DEPTH-1:0]        m_axis_combiner_tvalid_shift;
+// logic [MATRIX_DEPTH-1:0][MATRIX_DEPTH-1:0]        m_axis_combiner_tready_shift;
+// logic [MATRIX_DEPTH-1:0][MATRIX_DEPTH-1:0]        m_axis_combiner_tlast_shift;
+// logic [MATRIX_DEPTH-1:0][MATRIX_DEPTH-1:0][511:0] m_axis_combiner_tdata_shift;
+
+// genvar ith_shift;
+// always @(posedge ap_clk) begin
+//     m_axis_combiner_tvalid_shift[0] <= m_axis_combiner_tvalid;
+//     m_axis_combiner_tready_shift[0] <= m_axis_combiner_tready;
+//     m_axis_combiner_tdata_shift[0] <= m_axis_combiner_tdata;
+//     m_axis_combiner_tlast_shift[0] <= m_axis_combiner_tlast;
+// end
+// generate
+//     for (ith_shift = 0; ith_shift < MATRIX_DEPTH - 1; ++ith_shift) begin
+//         always @(posedge ap_clk) begin
+//             m_axis_combiner_tvalid_shift[ith_shift + 1] <= m_axis_combiner_tvalid_shift[ith_shift];
+//             m_axis_combiner_tready_shift[ith_shift + 1] <= m_axis_combiner_tready_shift[ith_shift];
+//             m_axis_combiner_tdata_shift[ith_shift + 1] <= m_axis_combiner_tdata_shift[ith_shift];
+//             m_axis_combiner_tlast_shift[ith_shift + 1] <= m_axis_combiner_tlast_shift[ith_shift];
+//         end
+//     end
+// endgenerate
+
+// assign m_axis_combiner_tready = {MATRIX_DEPTH{1'b1}};
+
+logic [MATRIX_DEPTH-1:0][MATRIX_DEPTH-1:0]        m_axis_combiner_tvalid_shift;
+logic [MATRIX_DEPTH-1:0][MATRIX_DEPTH-1:0]        m_axis_combiner_tready_shift;
+logic [MATRIX_DEPTH-1:0][MATRIX_DEPTH-1:0]        m_axis_combiner_tlast_shift;
+logic [MATRIX_DEPTH-1:0][MATRIX_DEPTH-1:0][511:0] m_axis_combiner_tdata_shift;
+
+genvar ith_shift;
+genvar jth_shift;
+generate
+    for (ith_shift = 0; ith_shift < MATRIX_DEPTH; ++ith_shift) begin
+        axis_register_slice_0 axis_shift_register (
+          .aclk          ( ap_clk                                     ) , // input wire aclk
+          .aresetn       ( ap_rst_n                                   ) , // input wire aresetn
+          .s_axis_tvalid ( m_axis_combiner_tvalid[ith_shift]          ) , // input wire s_axis_tvalid
+          .s_axis_tready ( m_axis_combiner_tready[ith_shift]          ) , // output wire s_axis_tready
+          .s_axis_tdata  ( m_axis_combiner_tdata[ith_shift]           ) , // input wire [511 : 0] s_axis_tdata
+          .s_axis_tlast  ( m_axis_combiner_tlast[ith_shift]           ) , // input wire s_axis_tlast
+          .m_axis_tvalid ( m_axis_combiner_tvalid_shift[0][ith_shift] ) , // output wire m_axis_tvalid
+          .m_axis_tready ( m_axis_combiner_tready_shift[0][ith_shift] ) , // input wire m_axis_tready
+          .m_axis_tdata  ( m_axis_combiner_tdata_shift[0][ith_shift]  ) , // output wire [511 : 0] m_axis_tdata
+          .m_axis_tlast  ( m_axis_combiner_tlast_shift[0][ith_shift]  )   // output wire m_axis_tlast
+        );
+        for (jth_shift = 1; jth_shift < ith_shift + 1; ++jth_shift) begin
+            axis_register_slice_0 axis_shift_register (
+              .aclk          ( ap_clk                                               ) , // input wire aclk
+              .aresetn       ( ap_rst_n                                             ) , // input wire aresetn
+              .s_axis_tvalid ( m_axis_combiner_tvalid_shift[jth_shift-1][ith_shift] ) , // input wire s_axis_tvalid
+              .s_axis_tready ( m_axis_combiner_tready_shift[jth_shift-1][ith_shift] ) , // output wire s_axis_tready
+              .s_axis_tdata  ( m_axis_combiner_tdata_shift[jth_shift-1][ith_shift]  ) , // input wire [511 : 0] s_axis_tdata
+              .s_axis_tlast  ( m_axis_combiner_tlast_shift[jth_shift-1][ith_shift]  ) , // input wire s_axis_tlast
+              .m_axis_tvalid ( m_axis_combiner_tvalid_shift[jth_shift][ith_shift]   ) , // output wire m_axis_tvalid
+              .m_axis_tready ( m_axis_combiner_tready_shift[jth_shift][ith_shift]   ) , // input wire m_axis_tready
+              .m_axis_tdata  ( m_axis_combiner_tdata_shift[jth_shift][ith_shift]    ) , // output wire [511 : 0] m_axis_tdata
+              .m_axis_tlast  ( m_axis_combiner_tlast_shift[jth_shift][ith_shift]    )   // output wire m_axis_tlast
+            );
+        end
+    end
+endgenerate
+
+axis_interconnect_1 axis_interconnect (
+  .ACLK                 ( ap_clk                               ) , // input wire ACLK
+  .ARESETN              ( ap_rst_n                             ) , // input wire ARESETN
+  .S00_AXIS_ACLK        ( ap_clk                               ) , // input wire S00_AXIS_ACLK
+  .S01_AXIS_ACLK        ( ap_clk                               ) , // input wire S01_AXIS_ACLK
+  .S02_AXIS_ACLK        ( ap_clk                               ) , // input wire S02_AXIS_ACLK
+  .S03_AXIS_ACLK        ( ap_clk                               ) , // input wire S03_AXIS_ACLK
+  .S04_AXIS_ACLK        ( ap_clk                               ) , // input wire S04_AXIS_ACLK
+  .S05_AXIS_ACLK        ( ap_clk                               ) , // input wire S05_AXIS_ACLK
+  .S06_AXIS_ACLK        ( ap_clk                               ) , // input wire S06_AXIS_ACLK
+  .S07_AXIS_ACLK        ( ap_clk                               ) , // input wire S07_AXIS_ACLK
+  .S08_AXIS_ACLK        ( ap_clk                               ) , // input wire S08_AXIS_ACLK
+  .S09_AXIS_ACLK        ( ap_clk                               ) , // input wire S09_AXIS_ACLK
+  .S10_AXIS_ACLK        ( ap_clk                               ) , // input wire S10_AXIS_ACLK
+  .S11_AXIS_ACLK        ( ap_clk                               ) , // input wire S11_AXIS_ACLK
+  .S12_AXIS_ACLK        ( ap_clk                               ) , // input wire S12_AXIS_ACLK
+  .S13_AXIS_ACLK        ( ap_clk                               ) , // input wire S13_AXIS_ACLK
+  .S14_AXIS_ACLK        ( ap_clk                               ) , // input wire S14_AXIS_ACLK
+  .S15_AXIS_ACLK        ( ap_clk                               ) , // input wire S15_AXIS_ACLK
+  .S00_AXIS_ARESETN     ( ap_rst_n                             ) , // input wire S00_AXIS_ARESETN
+  .S01_AXIS_ARESETN     ( ap_rst_n                             ) , // input wire S01_AXIS_ARESETN
+  .S02_AXIS_ARESETN     ( ap_rst_n                             ) , // input wire S02_AXIS_ARESETN
+  .S03_AXIS_ARESETN     ( ap_rst_n                             ) , // input wire S03_AXIS_ARESETN
+  .S04_AXIS_ARESETN     ( ap_rst_n                             ) , // input wire S04_AXIS_ARESETN
+  .S05_AXIS_ARESETN     ( ap_rst_n                             ) , // input wire S05_AXIS_ARESETN
+  .S06_AXIS_ARESETN     ( ap_rst_n                             ) , // input wire S06_AXIS_ARESETN
+  .S07_AXIS_ARESETN     ( ap_rst_n                             ) , // input wire S07_AXIS_ARESETN
+  .S08_AXIS_ARESETN     ( ap_rst_n                             ) , // input wire S08_AXIS_ARESETN
+  .S09_AXIS_ARESETN     ( ap_rst_n                             ) , // input wire S09_AXIS_ARESETN
+  .S10_AXIS_ARESETN     ( ap_rst_n                             ) , // input wire S10_AXIS_ARESETN
+  .S11_AXIS_ARESETN     ( ap_rst_n                             ) , // input wire S11_AXIS_ARESETN
+  .S12_AXIS_ARESETN     ( ap_rst_n                             ) , // input wire S12_AXIS_ARESETN
+  .S13_AXIS_ARESETN     ( ap_rst_n                             ) , // input wire S13_AXIS_ARESETN
+  .S14_AXIS_ARESETN     ( ap_rst_n                             ) , // input wire S14_AXIS_ARESETN
+  .S15_AXIS_ARESETN     ( ap_rst_n                             ) , // input wire S15_AXIS_ARESETN
+  .S00_AXIS_TVALID      ( m_axis_combiner_tvalid_shift[0] [0]  ) , // input wire S00_AXIS_TVALID
+  .S01_AXIS_TVALID      ( m_axis_combiner_tvalid_shift[1] [1]  ) , // input wire S01_AXIS_TVALID
+  .S02_AXIS_TVALID      ( m_axis_combiner_tvalid_shift[2] [2]  ) , // input wire S02_AXIS_TVALID
+  .S03_AXIS_TVALID      ( m_axis_combiner_tvalid_shift[3] [3]  ) , // input wire S03_AXIS_TVALID
+  .S04_AXIS_TVALID      ( m_axis_combiner_tvalid_shift[4] [4]  ) , // input wire S04_AXIS_TVALID
+  .S05_AXIS_TVALID      ( m_axis_combiner_tvalid_shift[5] [5]  ) , // input wire S05_AXIS_TVALID
+  .S06_AXIS_TVALID      ( m_axis_combiner_tvalid_shift[6] [6]  ) , // input wire S06_AXIS_TVALID
+  .S07_AXIS_TVALID      ( m_axis_combiner_tvalid_shift[7] [7]  ) , // input wire S07_AXIS_TVALID
+  .S08_AXIS_TVALID      ( m_axis_combiner_tvalid_shift[8] [8]  ) , // input wire S08_AXIS_TVALID
+  .S09_AXIS_TVALID      ( m_axis_combiner_tvalid_shift[9] [9]  ) , // input wire S09_AXIS_TVALID
+  .S10_AXIS_TVALID      ( m_axis_combiner_tvalid_shift[10][10] ) , // input wire S10_AXIS_TVALID
+  .S11_AXIS_TVALID      ( m_axis_combiner_tvalid_shift[11][11] ) , // input wire S11_AXIS_TVALID
+  .S12_AXIS_TVALID      ( m_axis_combiner_tvalid_shift[12][12] ) , // input wire S12_AXIS_TVALID
+  .S13_AXIS_TVALID      ( m_axis_combiner_tvalid_shift[13][13] ) , // input wire S13_AXIS_TVALID
+  .S14_AXIS_TVALID      ( m_axis_combiner_tvalid_shift[14][14] ) , // input wire S14_AXIS_TVALID
+  .S15_AXIS_TVALID      ( m_axis_combiner_tvalid_shift[15][15] ) , // input wire S15_AXIS_TVALID
+  .S00_AXIS_TREADY      ( m_axis_combiner_tready_shift[0] [0]  ) , // output wire S00_AXIS_TREADY
+  .S01_AXIS_TREADY      ( m_axis_combiner_tready_shift[1] [1]  ) , // output wire S01_AXIS_TREADY
+  .S02_AXIS_TREADY      ( m_axis_combiner_tready_shift[2] [2]  ) , // output wire S02_AXIS_TREADY
+  .S03_AXIS_TREADY      ( m_axis_combiner_tready_shift[3] [3]  ) , // output wire S03_AXIS_TREADY
+  .S04_AXIS_TREADY      ( m_axis_combiner_tready_shift[4] [4]  ) , // output wire S04_AXIS_TREADY
+  .S05_AXIS_TREADY      ( m_axis_combiner_tready_shift[5] [5]  ) , // output wire S05_AXIS_TREADY
+  .S06_AXIS_TREADY      ( m_axis_combiner_tready_shift[6] [6]  ) , // output wire S06_AXIS_TREADY
+  .S07_AXIS_TREADY      ( m_axis_combiner_tready_shift[7] [7]  ) , // output wire S07_AXIS_TREADY
+  .S08_AXIS_TREADY      ( m_axis_combiner_tready_shift[8] [8]  ) , // output wire S08_AXIS_TREADY
+  .S09_AXIS_TREADY      ( m_axis_combiner_tready_shift[9] [9]  ) , // output wire S09_AXIS_TREADY
+  .S10_AXIS_TREADY      ( m_axis_combiner_tready_shift[10][10] ) , // output wire S10_AXIS_TREADY
+  .S11_AXIS_TREADY      ( m_axis_combiner_tready_shift[11][11] ) , // output wire S11_AXIS_TREADY
+  .S12_AXIS_TREADY      ( m_axis_combiner_tready_shift[12][12] ) , // output wire S12_AXIS_TREADY
+  .S13_AXIS_TREADY      ( m_axis_combiner_tready_shift[13][13] ) , // output wire S13_AXIS_TREADY
+  .S14_AXIS_TREADY      ( m_axis_combiner_tready_shift[14][14] ) , // output wire S14_AXIS_TREADY
+  .S15_AXIS_TREADY      ( m_axis_combiner_tready_shift[15][15] ) , // output wire S15_AXIS_TREADY
+  .S00_AXIS_TDATA       ( m_axis_combiner_tdata_shift[0] [0]   ) , // input wire [511 : 0] S00_AXIS_TDATA
+  .S01_AXIS_TDATA       ( m_axis_combiner_tdata_shift[1] [1]   ) , // input wire [511 : 0] S01_AXIS_TDATA
+  .S02_AXIS_TDATA       ( m_axis_combiner_tdata_shift[2] [2]   ) , // input wire [511 : 0] S02_AXIS_TDATA
+  .S03_AXIS_TDATA       ( m_axis_combiner_tdata_shift[3] [3]   ) , // input wire [511 : 0] S03_AXIS_TDATA
+  .S04_AXIS_TDATA       ( m_axis_combiner_tdata_shift[4] [4]   ) , // input wire [511 : 0] S04_AXIS_TDATA
+  .S05_AXIS_TDATA       ( m_axis_combiner_tdata_shift[5] [5]   ) , // input wire [511 : 0] S05_AXIS_TDATA
+  .S06_AXIS_TDATA       ( m_axis_combiner_tdata_shift[6] [6]   ) , // input wire [511 : 0] S06_AXIS_TDATA
+  .S07_AXIS_TDATA       ( m_axis_combiner_tdata_shift[7] [7]   ) , // input wire [511 : 0] S07_AXIS_TDATA
+  .S08_AXIS_TDATA       ( m_axis_combiner_tdata_shift[8] [8]   ) , // input wire [511 : 0] S08_AXIS_TDATA
+  .S09_AXIS_TDATA       ( m_axis_combiner_tdata_shift[9] [9]   ) , // input wire [511 : 0] S09_AXIS_TDATA
+  .S10_AXIS_TDATA       ( m_axis_combiner_tdata_shift[10][10]  ) , // input wire [511 : 0] S10_AXIS_TDATA
+  .S11_AXIS_TDATA       ( m_axis_combiner_tdata_shift[11][11]  ) , // input wire [511 : 0] S11_AXIS_TDATA
+  .S12_AXIS_TDATA       ( m_axis_combiner_tdata_shift[12][12]  ) , // input wire [511 : 0] S12_AXIS_TDATA
+  .S13_AXIS_TDATA       ( m_axis_combiner_tdata_shift[13][13]  ) , // input wire [511 : 0] S13_AXIS_TDATA
+  .S14_AXIS_TDATA       ( m_axis_combiner_tdata_shift[14][14]  ) , // input wire [511 : 0] S14_AXIS_TDATA
+  .S15_AXIS_TDATA       ( m_axis_combiner_tdata_shift[15][15]  ) , // input wire [511 : 0] S15_AXIS_TDATA
+  .S00_AXIS_TLAST       ( m_axis_combiner_tlast_shift[0] [0]   ) , // input wire S00_AXIS_TLAST
+  .S01_AXIS_TLAST       ( m_axis_combiner_tlast_shift[1] [1]   ) , // input wire S01_AXIS_TLAST
+  .S02_AXIS_TLAST       ( m_axis_combiner_tlast_shift[2] [2]   ) , // input wire S02_AXIS_TLAST
+  .S03_AXIS_TLAST       ( m_axis_combiner_tlast_shift[3] [3]   ) , // input wire S03_AXIS_TLAST
+  .S04_AXIS_TLAST       ( m_axis_combiner_tlast_shift[4] [4]   ) , // input wire S04_AXIS_TLAST
+  .S05_AXIS_TLAST       ( m_axis_combiner_tlast_shift[5] [5]   ) , // input wire S05_AXIS_TLAST
+  .S06_AXIS_TLAST       ( m_axis_combiner_tlast_shift[6] [6]   ) , // input wire S06_AXIS_TLAST
+  .S07_AXIS_TLAST       ( m_axis_combiner_tlast_shift[7] [7]   ) , // input wire S07_AXIS_TLAST
+  .S08_AXIS_TLAST       ( m_axis_combiner_tlast_shift[8] [8]   ) , // input wire S08_AXIS_TLAST
+  .S09_AXIS_TLAST       ( m_axis_combiner_tlast_shift[9] [9]   ) , // input wire S09_AXIS_TLAST
+  .S10_AXIS_TLAST       ( m_axis_combiner_tlast_shift[10][10]  ) , // input wire S10_AXIS_TLAST
+  .S11_AXIS_TLAST       ( m_axis_combiner_tlast_shift[11][11]  ) , // input wire S11_AXIS_TLAST
+  .S12_AXIS_TLAST       ( m_axis_combiner_tlast_shift[12][12]  ) , // input wire S12_AXIS_TLAST
+  .S13_AXIS_TLAST       ( m_axis_combiner_tlast_shift[13][13]  ) , // input wire S13_AXIS_TLAST
+  .S14_AXIS_TLAST       ( m_axis_combiner_tlast_shift[14][14]  ) , // input wire S14_AXIS_TLAST
+  .S15_AXIS_TLAST       ( m_axis_combiner_tlast_shift[15][15]  ) , // input wire S15_AXIS_TLAST
+  .M00_AXIS_ACLK        ( ap_clk                               ) , // input wire M00_AXIS_ACLK
+  .M00_AXIS_ARESETN     ( ap_rst_n                             ) , // input wire M00_AXIS_ARESETN
+  .M00_AXIS_TVALID      ( wr_tvalid_out_C                      ) , // output wire M00_AXIS_TVALID
+  .M00_AXIS_TREADY      ( wr_tready_out_C                      ) , // input wire M00_AXIS_TREADY
+  .M00_AXIS_TDATA       ( wr_tdata_out_C                       ) , // output wire [511 : 0] M00_AXIS_TDATA
+  .M00_AXIS_TLAST       (                                      ) , // output wire M00_AXIS_TLAST
+  .S00_ARB_REQ_SUPPRESS ( 1'b0                                 ) , // input wire S00_ARB_REQ_SUPPRESS
+  .S01_ARB_REQ_SUPPRESS ( 1'b0                                 ) , // input wire S01_ARB_REQ_SUPPRESS
+  .S02_ARB_REQ_SUPPRESS ( 1'b0                                 ) , // input wire S02_ARB_REQ_SUPPRESS
+  .S03_ARB_REQ_SUPPRESS ( 1'b0                                 ) , // input wire S03_ARB_REQ_SUPPRESS
+  .S04_ARB_REQ_SUPPRESS ( 1'b0                                 ) , // input wire S04_ARB_REQ_SUPPRESS
+  .S05_ARB_REQ_SUPPRESS ( 1'b0                                 ) , // input wire S05_ARB_REQ_SUPPRESS
+  .S06_ARB_REQ_SUPPRESS ( 1'b0                                 ) , // input wire S06_ARB_REQ_SUPPRESS
+  .S07_ARB_REQ_SUPPRESS ( 1'b0                                 ) , // input wire S07_ARB_REQ_SUPPRESS
+  .S08_ARB_REQ_SUPPRESS ( 1'b0                                 ) , // input wire S08_ARB_REQ_SUPPRESS
+  .S09_ARB_REQ_SUPPRESS ( 1'b0                                 ) , // input wire S09_ARB_REQ_SUPPRESS
+  .S10_ARB_REQ_SUPPRESS ( 1'b0                                 ) , // input wire S10_ARB_REQ_SUPPRESS
+  .S11_ARB_REQ_SUPPRESS ( 1'b0                                 ) , // input wire S11_ARB_REQ_SUPPRESS
+  .S12_ARB_REQ_SUPPRESS ( 1'b0                                 ) , // input wire S12_ARB_REQ_SUPPRESS
+  .S13_ARB_REQ_SUPPRESS ( 1'b0                                 ) , // input wire S13_ARB_REQ_SUPPRESS
+  .S14_ARB_REQ_SUPPRESS ( 1'b0                                 ) , // input wire S14_ARB_REQ_SUPPRESS
+  .S15_ARB_REQ_SUPPRESS ( 1'b0                                 ) // input wire S15_ARB_REQ_SUPPRESS
+);
 
 endmodule : my_matrix_multiplier_implementation
 `default_nettype wire
