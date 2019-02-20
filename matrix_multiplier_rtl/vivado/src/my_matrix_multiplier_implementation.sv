@@ -10,7 +10,8 @@ module my_matrix_multiplier_implementation #(
   parameter integer C_M02_AXI_ADDR_WIDTH = 64 ,
   parameter integer C_M02_AXI_DATA_WIDTH = 512,
   parameter integer C_XFER_SIZE_WIDTH    = 32 ,
-  parameter integer LP_RD_MAX_OUTSTANDING= 128
+  parameter integer LP_RD_MAX_OUTSTANDING= 128,
+  parameter integer LP_WR_MAX_OUTSTANDING= 32
 )
 (
   // System Signals
@@ -96,7 +97,7 @@ timeprecision 1ps;
 // Local Parameters
 ///////////////////////////////////////////////////////////////////////////////
 // Large enough for interesting traffic.
-localparam integer  LP_DEFAULT_LENGTH_IN_BYTES = 16384;
+localparam integer  LP_DEFAULT_LENGTH_IN_BYTES = 1024;
 localparam integer  LP_NUM_EXAMPLES    = 3;
 localparam integer  MATRIX_WIDTH = 16;
 localparam integer  MATRIX_DEPTH = 16;
@@ -184,7 +185,7 @@ my_matrix_multiplier_example_axi_read_master #(
 inst_axi_read_master_in_A (
   .aclk                    ( ap_clk                  ) ,
   .areset                  ( areset                  ) ,
-  .ctrl_start              ( ap_start                ) ,
+  .ctrl_start              ( ap_start_pulse          ) ,
   .ctrl_done               ( read_done_in_A          ) ,
   .ctrl_addr_offset        ( in_A                    ) ,
   .ctrl_xfer_size_in_bytes ( ctrl_xfer_size_in_bytes ) ,
@@ -228,7 +229,7 @@ my_matrix_multiplier_example_axi_read_master #(
 inst_axi_read_master_in_B (
   .aclk                    ( ap_clk                  ) ,
   .areset                  ( areset                  ) ,
-  .ctrl_start              ( ap_start                ) ,
+  .ctrl_start              ( ap_start_pulse          ) ,
   .ctrl_done               ( read_done_in_B          ) ,
   .ctrl_addr_offset        ( in_B                    ) ,
   .ctrl_xfer_size_in_bytes ( ctrl_xfer_size_in_bytes ) ,
@@ -254,7 +255,7 @@ inst_axi_read_master_in_B (
 //
 //=================================================================================
 
-// AXI4 Read Master, output format is an AXI4-Stream master, one stream per thread.
+// AXI4 Write Master, output format is an AXI4-Stream master, one stream per thread.
 //---------
 logic                            write_done;
 logic                            wr_tvalid_out_C;
@@ -265,13 +266,13 @@ my_matrix_multiplier_example_axi_write_master #(
   .C_M_AXI_ADDR_WIDTH  ( C_M02_AXI_ADDR_WIDTH  ) ,
   .C_M_AXI_DATA_WIDTH  ( C_M02_AXI_DATA_WIDTH  ) ,
   .C_XFER_SIZE_WIDTH   ( C_XFER_SIZE_WIDTH     ) ,
-  .C_MAX_OUTSTANDING   ( LP_RD_MAX_OUTSTANDING ) ,
+  .C_MAX_OUTSTANDING   ( LP_WR_MAX_OUTSTANDING ) ,
   .C_INCLUDE_DATA_FIFO ( 1                     )
 )
-inst_axi_read_master_out_C (
+inst_axi_write_master_out_C (
   .aclk                    ( ap_clk                  ) ,
   .areset                  ( areset                  ) ,
-  .ctrl_start              ( ap_start                ) ,
+  .ctrl_start              ( ap_start_pulse          ) ,
   .ctrl_done               ( write_done              ) ,
   .ctrl_addr_offset        ( out_C                   ) ,
   .ctrl_xfer_size_in_bytes ( ctrl_xfer_size_in_bytes ) ,
@@ -297,8 +298,8 @@ inst_axi_read_master_out_C (
 // FSM for counting number of inputs pushed into FIFO so I can toggle TLAST the way I want
 //========================================================================================
 
-logic [MATRIX_ITER-1:0] in_A_word_counter = 16'h0000;
-logic                   in_A_word_tlast;
+logic [MATRIX_ITER-1:0] in_A_word_counter = 16'h0001;
+logic                   in_A_word_tlast = 0;
 always @(posedge ap_clk) begin
     if (rd_tvalid_in_A && rd_tready_in_A && in_A_word_counter == 16'h0000) begin
         in_A_word_counter <= 16'h0001;
@@ -310,10 +311,18 @@ always @(posedge ap_clk) begin
         in_A_word_counter <= in_A_word_counter << 1;
     end
 end
-assign in_A_word_tlast = in_A_word_counter[MATRIX_ITER-1];
+
+always @(posedge ap_clk) begin
+    if (in_A_word_counter[MATRIX_ITER-2] == 1'b1 && rd_tvalid_in_A && rd_tready_in_A) begin
+        in_A_word_tlast <= 1;
+    end
+    if (in_A_word_tlast == 1 && rd_tready_in_A && rd_tvalid_in_A) begin
+        in_A_word_tlast <= 0;
+    end
+end
 
 logic [MATRIX_ITER-1:0] in_B_word_counter = 16'h0000;
-logic                   in_B_word_tlast;
+logic                   in_B_word_tlast = 0;
 always @(posedge ap_clk) begin
     if (rd_tvalid_in_B && rd_tready_in_B && in_B_word_counter == 16'h0000) begin
         in_B_word_counter <= 16'h0001;
@@ -325,7 +334,15 @@ always @(posedge ap_clk) begin
         in_B_word_counter <= in_B_word_counter << 1;
     end
 end
-assign in_B_word_tlast = in_B_word_counter[MATRIX_ITER-1];
+
+always @(posedge ap_clk) begin
+    if (in_B_word_counter[MATRIX_ITER-2] == 1'b1 && rd_tvalid_in_B && rd_tready_in_B) begin
+        in_B_word_tlast <= 1;
+    end
+    if (in_B_word_tlast == 1 && rd_tready_in_B && rd_tvalid_in_B) begin
+        in_B_word_tlast <= 0;
+    end
+end
 
 
 //=================================================================================
@@ -419,15 +436,6 @@ generate
     for (i_in_B_to_s_fifo = 0; i_in_B_to_s_fifo < MATRIX_WIDTH; i_in_B_to_s_fifo++)
         assign s_fifo_in_B_word_tdata[i_in_B_to_s_fifo] = rd_tdata_in_B[i_in_B_to_s_fifo*32+:32];
 endgenerate
-
-always @(posedge ap_clk) begin
-    if (m_fifo_in_A_word_tlast[0] == 1'b1) begin
-        ap_done_i = 3'b111;
-    end
-    else begin
-        ap_done_i = 3'b000;
-    end
-end
 
 
 //=================================================================================
@@ -614,6 +622,8 @@ generate
     end
 endgenerate
 
+logic final_output_tlast;
+
 axis_interconnect_1 axis_interconnect (
   .ACLK                 ( ap_clk                               ) , // input wire ACLK
   .ARESETN              ( ap_rst_n                             ) , // input wire ARESETN
@@ -718,7 +728,7 @@ axis_interconnect_1 axis_interconnect (
   .M00_AXIS_TVALID      ( wr_tvalid_out_C                      ) , // output wire M00_AXIS_TVALID
   .M00_AXIS_TREADY      ( wr_tready_out_C                      ) , // input wire M00_AXIS_TREADY
   .M00_AXIS_TDATA       ( wr_tdata_out_C                       ) , // output wire [511 : 0] M00_AXIS_TDATA
-  .M00_AXIS_TLAST       (                                      ) , // output wire M00_AXIS_TLAST
+  .M00_AXIS_TLAST       ( final_output_tlast                   ) , // output wire M00_AXIS_TLAST
   .S00_ARB_REQ_SUPPRESS ( 1'b0                                 ) , // input wire S00_ARB_REQ_SUPPRESS
   .S01_ARB_REQ_SUPPRESS ( 1'b0                                 ) , // input wire S01_ARB_REQ_SUPPRESS
   .S02_ARB_REQ_SUPPRESS ( 1'b0                                 ) , // input wire S02_ARB_REQ_SUPPRESS
@@ -736,6 +746,15 @@ axis_interconnect_1 axis_interconnect (
   .S14_ARB_REQ_SUPPRESS ( 1'b0                                 ) , // input wire S14_ARB_REQ_SUPPRESS
   .S15_ARB_REQ_SUPPRESS ( 1'b0                                 ) // input wire S15_ARB_REQ_SUPPRESS
 );
+
+always @(posedge ap_clk) begin
+    if (write_done == 1'b1) begin
+        ap_done_i <= 3'b111;
+    end
+    else begin
+        ap_done_i <= 3'b000;
+    end
+end
 
 endmodule : my_matrix_multiplier_implementation
 `default_nettype wire
